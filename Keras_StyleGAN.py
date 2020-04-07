@@ -5,7 +5,6 @@ import tensorflow as tf
 
 from keras.layers import *
 from keras.models import Model
-import keras 
 from keras.backend import tensorflow_backend as K
 
 # Bias Add layer
