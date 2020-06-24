@@ -47,7 +47,7 @@ class StyleGAN():
         
         self.s_model = self.synthesis_model()
         self.m_model = self.mapping_model()
-        self.model = self.mapping_synthesis_model()
+        self.model   = self.mapping_synthesis_model()
     # 特徴マップの数を計算する関数
     # 引数のStageはBlockのことを指す。スタートは1から。出力が1024だとするとstageは[1,2,3,4,5,6,7,8,9]の9つとなる。
     def nf(self,stage): 
@@ -60,12 +60,21 @@ class StyleGAN():
     ##-------------------------------------------------------------------------##
     ##                            Blockを構成するレイヤー                        ##
     ##-------------------------------------------------------------------------##
-
-    
     # 画像サイズをおおきくするレイヤー
+    def _upscale2d(self,x,factor=2,gain=np.sqrt(2)):
+        if gain != 1:
+            x = Lambda(lambda x:x*gain)(x)
+        if factor == 1:
+            return x
+        s = [0,int(x.shape[1]),int(x.shape[2]),int(x.shape[3])]
+        x = Lambda(lambda x:tf.reshape(x,[-1,s[1],1,s[2],1,s[3]]))(x)
+        x = Lambda(lambda x:tf.tile(x,[1,1,1,factor,1,factor]))(x)
+        x = Lambda(lambda x:tf.reshape(x,[-1,s[1]*factor,s[2]*factor,s[3]]))(x)
+        return x
+    
     def UP_Conv(self,x,stage):
         if 2*int(x.shape[1]) < 128:
-            x = Lambda(lambda x:keras.backend.resize_images(x, 2, 2,data_format="channels_last"))(x)
+            x = Lambda(lambda x: self._upscale2d(x))(x)
             x = Convolution2D(self.nf(stage),(3,3),padding="same",use_bias=False,name="%ix%i/Conv0_up/weight"%(2**(stage+1),2**(stage+1)))(x)
         else:
             x = Conv2DTranspose(self.nf(stage),(4,4),padding="same",use_bias=False,strides=(2,2),name="%ix%i/Conv0_up/weight"%(2**(stage+1),2**(stage+1)))(x)
@@ -79,6 +88,7 @@ class StyleGAN():
             f=[1,2,1]
             f = np.array(f, dtype=dtype)
             f = f[:, np.newaxis] * f[np.newaxis, :]
+            f = f / np.sum(f)
             f = np.tile(f, [int(shape[2]),1, 1]).transpose((1,2,0))
             f = np.tile(f, [int(shape[3]),1 ,1, 1]).transpose((1,2,3,0))
             f = K.constant(f, dtype=dtype)
@@ -211,6 +221,7 @@ class StyleGAN():
     ##-------------------------------------------------------------------------##
     ##                                Model                                    ##
     ##-------------------------------------------------------------------------##
+    
 
     def mapping_synthesis_model(self):
         self.dlatent = self.mapping(self.latent)
@@ -230,6 +241,8 @@ class StyleGAN():
         elif fmt == "Min_Max":
             img = Lambda(lambda x:x*255/2+(0.5+255/2))(img)
             return Model([w]+self.flat_Noise,img)
+        
+    
 
     ##-------------------------------------------------------------------------##
     ##                                function                                 ##
