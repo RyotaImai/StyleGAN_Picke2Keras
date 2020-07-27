@@ -2,6 +2,10 @@
 # StyleBasedGAN with Keras
 オリジナルのStyleGANのコード(https://github.com/NVlabs/stylegan) で学習したStyleBasedGANを扱いやすいKerasの形式に変換するリポジトリです。
 現段階ではGeneratorとしての機能のみでDiscriminatorは作っていませんので学習機能は存在しません。
+## Sample Weight
+Please Download here
+1024x1024_ffhq  
+https://drive.google.com/file/d/1TV4TcgOQyqx8i7R6NVXHJWjcxVXFYgAT/view?usp=sharing
 ## 環境
 Cuda 10.1  
 tensorflow-gpu == 1.15  
