@@ -1,30 +1,24 @@
 import numpy as np
-import keras
+import tensorflow.keras as keras
 import tensorflow as tf 
 
-from keras.layers import *
-from keras.models import Model
-import keras 
-from keras.backend import tensorflow_backend as K
+from tensorflow.keras.layers import *
+from tensorflow.keras.models import Model
 
 # Bias Add layer
-class bias_add(Layer):
-    def __init__(self, **kwargs):
-        super(bias_add, self).__init__(**kwargs)
+class bias_add(keras.layers.Layer):
+    def __init__(self,**kwargs):
+        super(bias_add, self).__init__()
 
-    def build(self,input_shape):
-        # Create a trainable weight variable for this layer.
+    def build(self, input_shape):
         self.bias = self.add_weight(name='bias',
-                                      shape=(input_shape[3],),
-                                      initializer=keras.initializers.Constant(value=0.5),
-                                      trainable=True)
-        self.bias = keras.backend.reshape(self.bias,(1,1,1,-1))
-        super(bias_add, self).build(input_shape)  # Be sure to call this at the end
+                                      shape=(input_shape[-1],),
+                                      initializer="random_normal",
+                                      trainable=True,dtype="float32")
+        super(bias_add, self).build(input_shape)
 
-    def call(self, x):
-        return tf.add(x,self.bias)
-    def compute_output_shape(self, input_shape):
-        return input_shape
+    def call(self, inputs):
+        return tf.add(inputs,self.bias[tf.newaxis,tf.newaxis,tf.newaxis])
     
     
 ##-------------------------------- Style GAN ----------------------------------##
@@ -49,7 +43,7 @@ class StyleGAN():
         self.model   = self.mapping_synthesis_model()
     # 特徴マップの数を計算する関数
     # 引数のStageはBlockのことを指す。スタートは1から。出力が1024だとするとstageは[1,2,3,4,5,6,7,8,9]の9つとなる。
-    def nf(self,stage): 
+    def nf(self,stage):
         fmap_decay        = 1
         fmap_max          = 512
         fmap_base         = 8192        
@@ -82,20 +76,19 @@ class StyleGAN():
     
     # Blur カーネルの設定。Kerasレイヤーを用いているが本来は学習しないパラメータになるのでlambdaレイヤーで固定して用いる。
     def Blur(self,x):
+        
         def blur_kernel(shape, dtype=np.float32):
             assert len(shape)==4
-            f=[1,2,1]
-            f = np.array(f, dtype=dtype)
+            f = [1,2,1]
+            f = np.array(f)
             f = f[:, np.newaxis] * f[np.newaxis, :]
             f = f / np.sum(f)
             f = np.tile(f, [int(shape[2]),1, 1]).transpose((1,2,0))
             f = np.tile(f, [int(shape[3]),1 ,1, 1]).transpose((1,2,3,0))
-            f = K.constant(f, dtype=dtype)
+            f = keras.backend.constant(f, dtype=dtype)
             return f
 
-        def my_init(shape, dtype=None):
-            return blur_kernel(shape,dtype=dtype)
-        return DepthwiseConv2D(3, padding='same', depth_multiplier=1, use_bias=False, depthwise_initializer=my_init, trainable=False)(x)
+        return keras.backend.depthwise_conv2d(x,blur_kernel((3,3,x.shape[-1],1)),padding="same")
 
     
     # Style Transfer を実装するレイヤー    
@@ -172,7 +165,8 @@ class StyleGAN():
     # Stage2からの処理を担当する
     def Block(self,x,stageN_dlatents,stage):
         x = self.UP_Conv(x,stage)
-        x = Lambda(lambda x:self.Blur(x),name = "%ix%i/Blur"%(2**(stage+1),2**(stage+1)))(x)
+        x = Lambda(lambda x:self.Blur(x),name = "%ix%i/blur"%(2**(stage+1),2**(stage+1)))(x)
+#         x = self.Blur(x)
         x = self.Layer_Epilogue(x,stageN_dlatents[0],stage,pre_or_post = 0)
         x = Convolution2D(self.nf(stage),(3,3),padding="same",use_bias=False,name = "%ix%i/Conv1"%(2**(stage+1),2**(stage+1)))(x)
         x = self.Layer_Epilogue(x,stageN_dlatents[1],stage,pre_or_post = 1)
@@ -207,7 +201,7 @@ class StyleGAN():
     # synthesis network
     def synthesis(self,dlatent):
         ## dlatentsをリストの形式に変換する。
-        dlatent_List = [[Lambda(lambda x:x[:,2*s])(dlatent),Lambda(lambda x:x[:,2*s+1])(dlatent) ] for s in range(self.num_stages)]
+        dlatent_List = [[dlatent[:,s[0]],dlatent[:,s[1]]] for s in np.reshape(np.arange(18),(9,2))]
         # Constant Inputを作成
         constant = Dense(4*4*512,use_bias=True,name="4x4/Const/const",kernel_initializer="zeros")(Lambda(lambda x:(0*x[:,0:1]))(dlatent_List[0][0]))
         constant = Reshape((4,4,512),name="Constant_Reshape")(constant)
